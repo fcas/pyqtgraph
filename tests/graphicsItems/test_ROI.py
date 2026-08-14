@@ -8,7 +8,7 @@ from packaging.version import Version, parse
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtTest
 from tests.image_testing import assertImageApproved
-from tests.ui_testing import mouseClick, mouseDrag, mouseMove, resizeWindow
+from tests.ui_testing import mouseClick, mouseDrag, mouseMove
 
 app = pg.mkQApp()
 pg.setConfigOption("mouseRateLimit", 0)
@@ -59,9 +59,9 @@ def check_getArrayRegion(roi, name, testResize=True, transpose=False):
 
     initState = roi.getState()
     win = pg.GraphicsView()
+    win.resize(200, 400)
     win.show()
-    resizeWindow(win, 200, 400)
-    # Don't use Qt's layouts for testing--these generate unpredictable results.
+    # Don't use Qts' layouts for testing--these generate unpredictable results.
     # Instead, manually place the ViewBoxes
     vb1 = pg.ViewBox()
     win.scene().addItem(vb1)
@@ -199,8 +199,8 @@ def check_getArrayRegion(roi, name, testResize=True, transpose=False):
 
 def test_mouseClickEvent():
     plt = pg.GraphicsView()
+    plt.resize(200, 200)
     plt.show()
-    resizeWindow(plt, 200, 200)
     vb = pg.ViewBox()
     plt.scene().addItem(vb)
     vb.resize(200, 200)
@@ -221,8 +221,8 @@ def test_mouseClickEvent():
 def test_mouseDragEventSnap():
     pg.setConfigOptions(antialias=False)
     plt = pg.GraphicsView()
+    plt.resize(200, 200)
     plt.show()
-    resizeWindow(plt, 200, 200)
     vb = pg.ViewBox()
     plt.scene().addItem(vb)
     vb.resize(200, 200)
@@ -304,8 +304,8 @@ def test_mouseDragEventSnap():
 )
 def test_PolyLineROI(roi, name):
     plt = pg.GraphicsView()
+    plt.resize(200, 200)
     plt.show()
-    resizeWindow(plt, 200, 200)
     vb = pg.ViewBox()
     plt.scene().addItem(vb)
     vb.resize(200, 200)
@@ -315,8 +315,7 @@ def test_PolyLineROI(roi, name):
 
     plt.scene().minDragTime = 0  # let us simulate mouse drags very quickly.
 
-    # seemingly arbitrary requirements; might need longer wait time for some
-    # platforms..
+    # seemingly arbitrary requirements; might need longer wait time for some platforms.
     QtTest.QTest.qWaitForWindowExposed(plt)
     QtTest.QTest.qWait(100)
 

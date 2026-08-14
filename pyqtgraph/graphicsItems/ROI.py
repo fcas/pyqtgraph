@@ -1362,7 +1362,11 @@ class Handle(UIGraphicsItem):
         if deletable:
             self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.RightButton)        
         self.setZValue(11)
-            
+
+    def pos(self):
+        # ROI class assumes that Handle class returns pg.Point
+        return Point(super().pos())
+
     def connectROI(self, roi):
         ### roi is the "parent" roi, i is the index of the handle in roi.handles
         self.rois.append(roi)
@@ -1508,7 +1512,7 @@ class Handle(UIGraphicsItem):
         return self.shape().boundingRect()
             
     def generateShape(self):
-        dt = self.deviceTransform()
+        dt = self.deviceTransform_()
         
         if dt is None:
             self._shape = self.path
@@ -1846,6 +1850,7 @@ class EllipseROI(ROI):
         self.addRotateHandle([1.0, 0.5], [0.5, 0.5])
         self.addScaleHandle([0.5*2.**-0.5 + 0.5, 0.5*2.**-0.5 + 0.5], [0.5, 0.5])
             
+    @QtCore.Slot()
     def _clearPath(self):
         self.path = None
         
@@ -2055,6 +2060,7 @@ class PolyLineROI(ROI):
         self.stateChanged(finish=True)
         return h
         
+    @QtCore.Slot(object, object)
     def segmentClicked(self, segment, ev=None, pos=None): ## pos should be in this item's coordinate system
         if ev is not None:
             pos = segment.mapToParent(ev.pos())
@@ -2067,6 +2073,7 @@ class PolyLineROI(ROI):
         self.addSegment(h3, h2, index=i+1)
         segment.replaceHandle(h2, h3)
         
+    @QtCore.Slot(object)
     def removeHandle(self, handle, updateSegments=True):
         ROI.removeHandle(self, handle)
         handle.sigRemoveRequested.disconnect(self.removeHandle)

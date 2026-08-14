@@ -639,10 +639,13 @@ def get_all_objects():
     gcl = gc.get_objects()
     olist = {}
     _getr(gcl, olist)
-    
-    del olist[id(olist)]
-    del olist[id(gcl)]
-    del olist[id(sys._getframe())]
+
+    # Remove internally created objects
+    for key in (id(olist), id(gcl), id(sys._getframe())):
+        try:
+            del olist[key]
+        except KeyError:
+            pass
     return olist
 
 
@@ -808,8 +811,14 @@ class ObjTracker(object):
         gc.collect()
         objs = get_all_objects()
         frame = sys._getframe()
-        del objs[id(frame)]  ## ignore the current frame 
-        del objs[id(frame.f_code)]
+        try:
+            del objs[id(frame)]  ## ignore the current frame 
+        except KeyError:
+            pass
+        try:
+            del objs[id(frame.f_code)]
+        except KeyError:
+            pass
         
         ignoreTypes = [int]
         refs = {}
@@ -1183,7 +1192,7 @@ class ThreadTrace(object):
                     if id == threading.current_thread().ident:
                         continue
 
-                    name = threadName()
+                    name = threadName(id)
 
                     printFile.write("<< thread %d \"%s\" >>\n" % (id, name))
                     tb = str(''.join(traceback.format_stack(frame)))

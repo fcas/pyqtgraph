@@ -9,7 +9,7 @@ from ... import debug as debug
 from ... import functions as fn
 from ... import getConfigOption
 from ...Point import Point
-from ...Qt import QtCore, QtGui, QtWidgets, isQObjectAlive, QT_LIB
+from ...Qt import QT_LIB, QtCore, QtGui, QtWidgets, isQObjectAlive
 from ..GraphicsWidget import GraphicsWidget
 from ..ItemGroup import ItemGroup
 
@@ -76,7 +76,7 @@ class ViewBox(GraphicsWidget):
     **Bases:** :class:`GraphicsWidget <pyqtgraph.GraphicsWidget>`
 
     Box that allows internal scaling/panning of children by mouse drag.
-    This class is usually created automatically as part of a :class:`PlotItem <pyqtgraph.PlotItem>` or :ref:`Canvas <Canvas>` or with :func:`GraphicsLayout.addViewBox() <pyqtgraph.GraphicsLayout.addViewBox>`.
+    This class is usually created automatically as part of a :class:`PlotItem <pyqtgraph.PlotItem>` or with :func:`GraphicsLayout.addViewBox() <pyqtgraph.GraphicsLayout.addViewBox>`.
 
     Features:
 
@@ -314,6 +314,7 @@ class ViewBox(GraphicsWidget):
                 scene.sigPrepareForPaint.connect(self.prepareForPaint)
         return ret
 
+    @QtCore.Slot()
     def prepareForPaint(self):
         #autoRangeEnabled = (self.state['autoRange'][0] is not False) or (self.state['autoRange'][1] is not False)
         # don't check whether auto range is enabled here--only check when setting dirty flag.
@@ -435,7 +436,7 @@ class ViewBox(GraphicsWidget):
 
         if not ignoreBounds:
             self.addedItems.append(item)
-        self.updateAutoRange()
+        self.queueUpdateAutoRange()
 
     def removeItem(self, item):
         """Remove an item from this view."""
@@ -448,7 +449,7 @@ class ViewBox(GraphicsWidget):
         if scene is not None:
             scene.removeItem(item)
         item.setParentItem(None)
-        self.updateAutoRange()
+        self.queueUpdateAutoRange()
 
     def clear(self):
         for i in self.addedItems[:]:
@@ -464,7 +465,7 @@ class ViewBox(GraphicsWidget):
             self.linkedXChanged()
             self.linkedYChanged()
 
-            self.updateAutoRange()
+            self.queueUpdateAutoRange()
             self.updateViewRange()
 
             # self._matrixNeedsUpdate = True
@@ -510,12 +511,11 @@ class ViewBox(GraphicsWidget):
             print("make qrectf failed:", self.state['targetRange'])
             raise
 
-    def _resetTarget(self, force: bool = False):
+    def _resetTarget(self):
         # Reset target range to exactly match current view range.
         # This is used during mouse interaction to prevent unpredictable
         # behavior (because the user is unaware of targetRange).
-        if self.state['aspectLocked'] is False or force: # (interferes with aspect locking)
-            self.state['targetRange'] = [self.state['viewRange'][0][:], self.state['viewRange'][1][:]]
+        self.state['targetRange'] = [self.state['viewRange'][0][:], self.state['viewRange'][1][:]]
             
     def _effectiveLimits(self):
         # Determines restricted effective scaling range when in log mapping mode
@@ -804,7 +804,14 @@ class ViewBox(GraphicsWidget):
         scale = Point([1.0 if x is None else x, 1.0 if y is None else y])
 
         if self.state['aspectLocked'] is not False:
-            scale[0] = scale[1]
+            if x is None:
+                scale[0] = scale[1]
+            elif y is None:
+                scale[1] = scale[0]
+            else:
+                # scale to y if neither x nor y is None.
+                # this path is entered when dragging the mouse with right-button pressed.
+                scale[0] = scale[1]
 
         vr = self.targetRect()
         if center is None:
@@ -900,7 +907,7 @@ class ViewBox(GraphicsWidget):
         if y is not None:
             self.state['autoPan'][1] = y
         if None not in [x,y]:
-            self.updateAutoRange()
+            self.queueUpdateAutoRange()
 
     def setAutoVisible(self, x=None, y=None):
         """Set whether automatic range uses only visible data when determining
@@ -916,7 +923,11 @@ class ViewBox(GraphicsWidget):
                 self.state['autoVisibleOnly'][0] = False
 
         if x is not None or y is not None:
-            self.updateAutoRange()
+            self.queueUpdateAutoRange()
+
+    def queueUpdateAutoRange(self):
+        self._autoRangeNeedsUpdate = True
+        self.update()
 
     def updateAutoRange(self):
         ## Break recursive loops when auto-ranging.
@@ -1053,11 +1064,13 @@ class ViewBox(GraphicsWidget):
     def blockLink(self, b):
         self.linksBlocked = b  ## prevents recursive plot-change propagation
 
+    @QtCore.Slot()
     def linkedXChanged(self):
         ## called when x range of linked view has changed
         view = self.linkedView(0)
         self.linkedViewChanged(view, ViewBox.XAxis)
 
+    @QtCore.Slot()
     def linkedYChanged(self):
         ## called when y range of linked view has changed
         view = self.linkedView(1)
@@ -1131,13 +1144,12 @@ class ViewBox(GraphicsWidget):
 
     def itemsChanged(self):
         ## called when items are added/removed from self.childGroup
-        self.updateAutoRange()
+        self.queueUpdateAutoRange()
 
     def itemBoundsChanged(self, item):
         self._itemBoundsCache.pop(item, None)
         if (self.state['autoRange'][0] is not False) or (self.state['autoRange'][1] is not False):
-            self._autoRangeNeedsUpdate = True
-            self.update()
+            self.queueUpdateAutoRange()
 
     def _invertAxis(self, ax, inv):
         key = 'xy'[ax] + 'Inverted'
@@ -1154,6 +1166,8 @@ class ViewBox(GraphicsWidget):
         else:
             self.sigXRangeChanged.emit(self, tuple(self.state['viewRange'][ax]))
 
+    @QtCore.Slot()
+    @QtCore.Slot(QtWidgets.QWidget)
     def invertY(self, b=True):
         """
         By default, the positive y-axis points upward on the screen. Use invertY(True) to reverse the y-axis.
@@ -1213,7 +1227,7 @@ class ViewBox(GraphicsWidget):
             if ratio != currentRatio:  ## If this would change the current range, do that now
                 self.updateViewRange()
 
-        self.updateAutoRange()
+        self.queueUpdateAutoRange()
         self.updateViewRange()
         self.sigStateChanged.emit(self)
 
@@ -1286,6 +1300,12 @@ class ViewBox(GraphicsWidget):
             mask[axis] = self.state['mouseEnabled'][axis]
         else:
             mask = self.state['mouseEnabled'][:]
+
+        if not any(mask):
+            # if mouse zoom/pan is not enabled, ignore the event
+            ev.ignore()
+            return
+
         s = 1.02 ** (ev.delta() * self.state['wheelScaleFactor']) # actual scaling factor
         s = [(None if m is False else s) for m in mask]
         center = Point(fn.invertQTransform(self.childGroup.transform()).map(ev.pos()))
@@ -1617,7 +1637,7 @@ class ViewBox(GraphicsWidget):
                         # tweak the target range down so we can still pan properly
                         viewRange[ax] = canidateRange[ax]
                         self.state['viewRange'][ax] = viewRange[ax]
-                        self._resetTarget(force=True)
+                        self._resetTarget()
                         ax = target  # Switch the "fixed" axes
 
             if ax == 0:
@@ -1692,6 +1712,9 @@ class ViewBox(GraphicsWidget):
         if vr.height() == 0 or vr.width() == 0:
             return
         scale = Point(bounds.width()/vr.width(), bounds.height()/vr.height())
+        for axis in (0, 1):
+            if not math.isfinite(scale[axis]):
+                scale[axis] = math.copysign(sys.float_info.max, scale[axis])
         if not self.state['yInverted']:
             scale = scale * Point(1, -1)
         if self.state['xInverted']:

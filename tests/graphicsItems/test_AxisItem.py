@@ -1,4 +1,5 @@
-from math import isclose
+from math import isclose, isfinite
+
 import pytest
 
 import pyqtgraph as pg
@@ -45,6 +46,41 @@ def test_AxisItem_viewUnlink():
     assert axis.linkedView() == view
     axis.unlinkFromView()
     assert axis.linkedView() is None
+
+
+@pytest.mark.parametrize("data", (
+    [value * 1e-310 for value in range(1, 11)],
+    [-1e-310, 0, 1e-310],
+))
+@pytest.mark.parametrize("orientation", ("bottom", "left"))
+def test_AxisItem_subnormal_range_tick_coordinates_are_finite(data, orientation):
+    plot = pg.PlotWidget()
+    plot.resize(640, 480)
+    indices = list(range(len(data)))
+    if orientation == "bottom":
+        plot.plot(x=data, y=indices)
+    else:
+        plot.plot(x=indices, y=data)
+    plot.show()
+    app.processEvents()
+
+    axis = plot.getAxis(orientation)
+    picture = pg.Qt.QtGui.QPicture()
+    painter = pg.Qt.QtGui.QPainter(picture)
+    try:
+        _, tick_specs, _ = axis.generateDrawSpecs(painter)
+    finally:
+        painter.end()
+
+    coordinates = (
+        coordinate
+        for _, start, stop in tick_specs
+        for point in (start, stop)
+        for coordinate in (point.x(), point.y())
+    )
+    assert tick_specs
+    assert all(isfinite(coordinate) for coordinate in coordinates)
+    plot.close()
 
 
 class FakeSignal:
@@ -95,6 +131,26 @@ def test_AxisItem_leftRelink():
     assert fake_view.sigResized.calls == ['connect', 'disconnect']
 
 
+def test_AxisItem_conditionalSIPrefix():
+    plot = pg.PlotWidget()
+    plot.setLabel("bottom", "Time", units="s", siPrefix=True, siPrefixEnableRanges=((1, 1e6),))
+    bottom = plot.getAxis("bottom")
+    bottom.setRange(0, 1e6)
+    assert "Time (Ms)" in bottom.labelString()
+    bottom.setRange(0, 1e3)
+    assert "Time (ks)" in bottom.labelString()
+    bottom.setRange(0, 1e9)
+    assert "Time (s)" in bottom.labelString()
+    bottom.setRange(0, 1e-9)
+    assert "Time (s)" in bottom.labelString()
+    bottom.setRange(-1e-9, 0)
+    assert "Time (s)" in bottom.labelString()
+    bottom.setRange(-1e3, 0)
+    assert "Time (ks)" in bottom.labelString()
+    bottom.setRange(-1e9, 0)
+    assert "Time (s)" in bottom.labelString()
+
+
 def test_AxisItem_tickFont(monkeypatch):
     def collides(textSpecs):
         fontMetrics = pg.Qt.QtGui.QFontMetrics(font)
@@ -122,31 +178,24 @@ def test_AxisItem_tickFont(monkeypatch):
     plot.close()
 
 
-def test_AxisItem_label_visibility():
+@pytest.mark.parametrize('orientation,label_kwargs,labelText,labelUnits', [
+    ('left', {}, '', '',),
+    ('left', dict(text='Position', units='mm'), 'Position', 'mm'),
+    ('left', dict(text=None, units=None), '', ''),
+    ('left', dict(text='Current', units=None), 'Current', ''),
+    ('left', dict(text='', units='V'), '', 'V')
+])
+def test_AxisItem_label_visibility(orientation, label_kwargs, labelText: str, labelUnits: str):
     """Test the visibility of the axis item using `setLabel`"""
-    axis = pg.AxisItem('left')
-    assert axis.labelText == ''
-    assert axis.labelUnits == ''
-    assert not axis.label.isVisible()
-    axis.setLabel(text='Position', units='mm')
-    assert axis.labelText == 'Position'
-    assert axis.labelUnits == 'mm'
-    assert axis.label.isVisible()
-    # XXX: `None` is converted to empty strings.
-    axis.setLabel(text=None, units=None)
-    assert axis.labelText == ''
-    assert axis.labelUnits == ''
-    assert not axis.label.isVisible()
-    axis.setLabel(text='Current', units=None)
-    assert axis.labelText == 'Current'
-    assert axis.labelUnits == ''
-    assert axis.label.isVisible()
-    axis.setLabel(text=None, units=None)
-    assert not axis.label.isVisible()
-    axis.setLabel(text='', units='V')
-    assert axis.labelText == ''
-    assert axis.labelUnits == 'V'
-    assert axis.label.isVisible()
+    axis = pg.AxisItem(orientation)
+    axis.setLabel(**label_kwargs)
+    assert axis.labelText == labelText
+    assert axis.labelUnits == labelUnits
+    assert (
+        axis.label.isVisible() 
+        if any(label_kwargs.values())
+        else not axis.label.isVisible()
+    )
 
 @pytest.mark.parametrize(
     "orientation,x,y,expected",

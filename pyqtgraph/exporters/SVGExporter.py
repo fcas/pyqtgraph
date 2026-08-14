@@ -29,11 +29,25 @@ class SVGExporter(Exporter):
             bg.setAlpha(0)
 
         self.params = Parameter.create(name='params', type='group', children=[
-            {'name': 'background', 'title': translate("Exporter", 'background'), 'type': 'color', 'value': bg},
-            {'name': 'width', 'title': translate("Exporter", 'width'), 'type': 'float', 'value': tr.width(),
-             'limits': (0, None)},
-            {'name': 'height', 'title': translate("Exporter", 'height'), 'type': 'float', 'value': tr.height(),
-             'limits': (0, None)},
+            {
+                'name': 'background',
+                'title': translate("Exporter", 'background'),
+                'type': 'color',
+                'value': bg
+            },
+            {
+                'name': 'width',
+                'title': translate("Exporter", 'width'),
+                'type': 'float',
+                'value': tr.width(),
+                'limits': (0, None)
+            },
+            {
+                'name': 'height',
+                'title': translate("Exporter", 'height'),
+                'type': 'float',
+                'value': tr.height(),
+                'limits': (0, None)},
             #{'name': 'viewbox clipping', 'type': 'bool', 'value': True},
             #{'name': 'normalize coordinates', 'type': 'bool', 'value': True},
             {
@@ -405,19 +419,25 @@ def correctCoordinates(node, defs, item, options):
                 ch.setAttribute('points', ' '.join([','.join([str(a) for a in c]) for c in coords]))
             elif ch.tagName == 'path':
                 removeTransform = True
-                newCoords = ''
                 oldCoords = ch.getAttribute('d').strip()
                 if oldCoords == '':
                     continue
+                newCoords = []
                 for c in oldCoords.split(' '):
-                    x,y = c.split(',')
-                    if x[0].isalpha():
-                        t = x[0]
-                        x = x[1:]
+                    tokens = c.split(',')
+                    if len(tokens) == 1:
+                        # this might be a Z
+                        newCoords.append(tokens[0])
                     else:
-                        t = ''
-                    nc = fn.transformCoordinates(tr, np.array([[float(x),float(y)]]), transpose=True)
-                    newCoords += t+str(nc[0,0])+','+str(nc[0,1])+' '
+                        x, y = tokens
+                        if x[0].isalpha():
+                            t = x[0]
+                            x = x[1:]
+                        else:
+                            t = ''
+                        nc = fn.transformCoordinates(tr, np.array([[float(x),float(y)]]), transpose=True)
+                        newCoords.append(t+str(nc[0,0])+','+str(nc[0,1]))
+                newCoords = ' '.join(newCoords)
                 # If coords start with L instead of M, then the entire path will not be rendered.
                 # (This can happen if the first point had nan values in it--Qt will skip it on export)
                 if newCoords[0] != 'M':

@@ -109,6 +109,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         self.prepareForPaint()
         return QtWidgets.QGraphicsScene.render(self, *args)
 
+    @QtCore.Slot()
     def prepareForPaint(self):
         """Called before every render. This method will inform items that the scene is about to
         be rendered by emitting sigPrepareForPaint.
@@ -178,8 +179,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
             # Next Deliver our own Hover Events
             self.sendHoverEvents(ev)
             if ev.buttons():
-                # button is pressed' send mouseMoveEvents and mouseDragEvents
-                super().mouseMoveEvent(ev)
+                # button is pressed' send mouseDragEvents
                 if self.mouseGrabberItem() is None:
                     now = perf_counter()
                     init = False
@@ -368,9 +368,15 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
                     acceptedItem.mouseClickEvent(ev)
                 except:
                     debug.printExc("Error sending click event:")
-            else:
+            if not ev.isAccepted() or acceptedItem is None:
                 for item in self.itemsNearEvent(ev):
-                    if not item.isVisible() or not item.isEnabled():
+                    if any(
+                        (
+                            not item.isVisible(),
+                            not item.isEnabled(),
+                            item is acceptedItem
+                        )
+                    ):
                         continue
                     if hasattr(item, 'mouseClickEvent'):
                         ev.currentItem = item
@@ -536,6 +542,7 @@ class GraphicsScene(QtWidgets.QGraphicsScene):
         self.contextMenuItem = event.acceptedItem
         return self.contextMenu
 
+    @QtCore.Slot()
     def showExportDialog(self):
         if self.exportDialog is None:
             from . import exportDialog

@@ -81,7 +81,21 @@ def test_setData():
     pdi.setData([],[])
     assert pdi.xData is None
     assert pdi.yData is None
-    
+
+    # recarray (issue #3275)
+    data = np.recarray((10,), dtype=[('x', float), ('y', float)])
+    data["x"] = np.linspace(0, 1, len(data))
+    data["y"] = np.linspace(10, 20, len(data))
+    pdi.setData(data)
+    assert all(pdi.xData == data["x"])
+    assert all(pdi.yData == data["y"])
+
+    # array with named fields
+    data = np.array([(1, 2), (3, 4), (5, 6)], dtype=[("x", float), ("y", float)])
+    pdi.setData(data)
+    assert all(pdi.xData == data["x"])
+    assert all(pdi.yData == data["y"])
+
 def test_nonfinite():
     def _assert_equal_arrays(a1, a2):
         assert a1.shape == a2.shape
@@ -185,11 +199,42 @@ def test_clipping():
     # test center and expected number of remaining data points
     for center, num in ((-100.,1), (100.,1), (0.,len(y)) ):
         # when all elements are off-screen, only one will be kept
-        # when all elelemts are on-screen, all should be kept
+        # when all elements are on-screen, all should be kept
         # and the code should not crash for zero separation
         w.setXRange( center-50, center+50, padding=0 )
         xDisp, yDisp = c.getData()
         assert len(xDisp) == num
         assert len(yDisp) == num
+
+    w.close()
+
+def test_downsampling_with_connect():
+    # Test that down sampling and view clipping works correctly when using the connect vector
+    x = np.linspace(0.0, 7.0, num=1000)
+    x = np.concatenate((x[:300], x[700:]))
+    y = np.sin(x)
+    connect = np.ones(len(x), dtype=bool)
+    connect[299] = False
+    nc = (x[~connect].item(), y[~connect].item())
+    w = pg.PlotWidget()
+    c = pg.PlotDataItem(x, y, connect=connect)
+    w.addItem(c)
+    c.setClipToView(True)
+    w.setXRange(1.0, 6.0)
+
+    # verify that the connect vector is clipped correctly
+    xs, ys = c.getData()
+    cs = c.curve.opts['connect']
+    assert len(xs) == len(cs)
+    assert nc == (xs[~cs].item(), ys[~cs].item())
+
+    c.setClipToView(False)
+    w.setXRange(0.0, 7.0)
+    for method in ['subsample', 'mean', 'peak']:
+        c.setDownsampling(5, method=method)
+        # verify that the connect vector is downsampled to the same size
+        xs, _ = c.getData()
+        cs = c.curve.opts['connect']
+        assert len(xs) == len(cs)
 
     w.close()

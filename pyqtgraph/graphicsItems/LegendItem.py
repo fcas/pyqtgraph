@@ -1,7 +1,7 @@
 import math
 
 from .. import functions as fn
-from ..icons import invisibleEye
+from ..icons import getGraphPixmap
 from ..Point import Point
 from ..Qt import QtCore, QtGui, QtWidgets
 from .BarGraphItem import BarGraphItem
@@ -29,7 +29,10 @@ class LegendItem(GraphicsWidgetAnchor, GraphicsWidget):
 
     """
 
-    def __init__(self, size=None, offset=None, horSpacing=25, verSpacing=0,
+    sigDoubleClicked = QtCore.Signal(object, object)
+    sigSampleClicked = QtCore.Signal(object)
+
+    def __init__(self, size=None, offset=None, horSpacing=5, verSpacing=0,
                  pen=None, brush=None, labelTextColor=None, frame=True,
                  labelTextSize='9pt', colCount=1, sampleType=None, **kwargs):
         """
@@ -64,7 +67,6 @@ class LegendItem(GraphicsWidgetAnchor, GraphicsWidget):
         """
         GraphicsWidget.__init__(self)
         GraphicsWidgetAnchor.__init__(self)
-        self.setFlag(self.GraphicsItemFlag.ItemIgnoresTransformations)
         self.layout = QtWidgets.QGraphicsGridLayout()
         self.layout.setVerticalSpacing(verSpacing)
         self.layout.setHorizontalSpacing(horSpacing)
@@ -218,6 +220,9 @@ class LegendItem(GraphicsWidgetAnchor, GraphicsWidget):
             sample = item
         else:
             sample = self.sampleType(item)
+
+        sample.sigClicked.connect(self.sigSampleClicked)
+
         self.items.append((sample, label))
         self._addItemToLayout(sample, label)
         self.updateSize()
@@ -239,7 +244,7 @@ class LegendItem(GraphicsWidgetAnchor, GraphicsWidget):
                     # MAKE NEW ROW
                     col = 0
                     row += 1
-        self.layout.addItem(sample, row, col)
+        self.layout.addItem(sample, row, col, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.layout.addItem(label, row, col + 1)
         # Keep rowCount in sync with the number of rows if items are added
         self.rowCount = max(self.rowCount, row + 1)
@@ -339,14 +344,22 @@ class LegendItem(GraphicsWidgetAnchor, GraphicsWidget):
             dpos = ev.pos() - ev.lastPos()
             self.autoAnchor(self.pos() + dpos)
 
+    def mouseDoubleClickEvent(self, ev):
+        self.sigDoubleClicked.emit(self, ev)
+        ev.accept()
+
 
 class ItemSample(GraphicsWidget):
     """Class responsible for drawing a single item in a LegendItem (sans label)
     """
 
+    sigClicked = QtCore.Signal(object)
+
     def __init__(self, item):
         GraphicsWidget.__init__(self)
         self.item = item
+        self.setFixedWidth(20)
+        self.setFixedHeight(20)
 
     def boundingRect(self):
         return QtCore.QRectF(0, 0, 20, 20)
@@ -358,8 +371,7 @@ class ItemSample(GraphicsWidget):
 
         visible = self.item.isVisible()
         if not visible:
-            icon = invisibleEye.qicon
-            p.drawPixmap(QtCore.QPoint(1, 1), icon.pixmap(18, 18))
+            p.drawPixmap(QtCore.QPoint(1, 1), getGraphPixmap('invisibleEye', size=(18, 18)))
             return
 
         if not isinstance(self.item, ScatterPlotItem):
@@ -395,3 +407,5 @@ class ItemSample(GraphicsWidget):
 
         event.accept()
         self.update()
+        self.sigClicked.emit(self.item)
+

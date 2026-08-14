@@ -327,7 +327,7 @@ class SymbolAtlas(object):
         else:
             img = fn.ndarray_to_qimage(self._data,
                 QtGui.QImage.Format.Format_ARGB32_Premultiplied)
-            pm = QtGui.QPixmap(img)
+            pm = QtGui.QPixmap.fromImage(img)
         return pm
 
 
@@ -561,6 +561,8 @@ class ScatterPlotItem(GraphicsObject):
             self.setPxMode(kargs['pxMode'])
         if 'antialias' in kargs:
             self.opts['antialias'] = kargs['antialias']
+        if 'compositionMode' in kargs:
+            self.opts['compositionMode'] = kargs['compositionMode']
         if 'hoverable' in kargs:
             self.opts['hoverable'] = bool(kargs['hoverable'])
         if 'tip' in kargs:
